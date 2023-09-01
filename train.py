@@ -199,9 +199,7 @@ def train(rank, world_size, args):
                     average_loss.value,
                     global_step,
                 )
-                logger.info(
-                    f"Step: {global_step}"
-                )
+                
                 average_loss.reset()
 
             # --------------------------------------------------------------------------#
@@ -245,6 +243,9 @@ def train(rank, world_size, args):
                         "validation/loss",
                         validation_loss.value,
                         global_step,
+                    )
+                    logger.info(
+                        f"Step: {global_step}"
                     )
                     logger.info(
                         f"valid -- epoch: {epoch}, loss: {validation_loss.value:.4f}"
