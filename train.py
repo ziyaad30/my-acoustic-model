@@ -1,5 +1,6 @@
 import argparse
 import logging
+import os
 from pathlib import Path
 
 import torch
@@ -30,9 +31,12 @@ BETAS = (0.8, 0.99)
 WEIGHT_DECAY = 1e-5
 STEPS = 80000
 LOG_INTERVAL = 5
-VALIDATION_INTERVAL = 1000
-CHECKPOINT_INTERVAL = 1000
-BACKEND = "nccl"
+VALIDATION_INTERVAL = 100
+CHECKPOINT_INTERVAL = 100
+if os.name == 'nt':
+    BACKEND = "gloo"
+else:
+    BACKEND = "nccl"
 INIT_METHOD = "tcp://localhost:54321"
 
 
@@ -87,7 +91,7 @@ def train(rank, world_size, args):
     train_dataset = MelDataset(
         root=args.dataset_dir,
         train=True,
-        discrete=args.discrete,
+        # discrete=args.discrete,
     )
     train_sampler = DistributedSampler(train_dataset, drop_last=True)
     train_loader = DataLoader(
@@ -111,7 +115,7 @@ def train(rank, world_size, args):
         shuffle=False,
         num_workers=8,
         pin_memory=True,
-        discrete=args.discrete,
+        # discrete=args.discrete,
     )
 
     ####################################################################################
@@ -194,6 +198,9 @@ def train(rank, world_size, args):
                     "train/loss",
                     average_loss.value,
                     global_step,
+                )
+                logger.info(
+                    f"Step: {global_step}"
                 )
                 average_loss.reset()
 
@@ -296,11 +303,11 @@ if __name__ == "__main__":
         help="path to the checkpoint to resume from.",
         type=Path,
     )
-    parser.add_argument(
-        "--discrete",
-        action="store_true",
-        help="use discrete units.",
-    )
+    # parser.add_argument(
+    #    "--discrete",
+    #    action="store_true",
+    #    help="use discrete units.",
+    # )
     args = parser.parse_args()
 
     world_size = torch.cuda.device_count()
