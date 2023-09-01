@@ -303,11 +303,11 @@ if __name__ == "__main__":
         help="path to the checkpoint to resume from.",
         type=Path,
     )
-    # parser.add_argument(
-    #    "--discrete",
-    #    action="store_true",
-    #    help="use discrete units.",
-    # )
+    parser.add_argument(
+        "--discrete",
+        action="store_true",
+        help="use discrete units.",
+    )
     args = parser.parse_args()
 
     world_size = torch.cuda.device_count()
