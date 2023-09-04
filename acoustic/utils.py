@@ -1,6 +1,8 @@
 import torch
 import torch.nn.functional as F
 import matplotlib
+import glob
+import os
 
 import torchaudio.transforms as transforms
 
@@ -63,12 +65,16 @@ def save_checkpoint(
         "loss": loss,
     }
     checkpoint_dir.mkdir(exist_ok=True, parents=True)
-    checkpoint_path = checkpoint_dir / f"model-{step}.pt"
+    checkpoint_path = checkpoint_dir / f"acoustic-training-model-{step}.pt"
     torch.save(state, checkpoint_path)
     if best:
-        best_path = checkpoint_dir / "model-best.pt"
-        torch.save(state, best_path)
+        model_path = checkpoint_dir / "acoustic-model.pt"
+        torch.save(state["acoustic-model"], model_path)
     logger.info(f"Saved checkpoint: {checkpoint_path.stem}")
+    old_model = oldest_checkpoint_path(checkpoint_dir, logger)
+    if os.path.exists(old_model):
+        os.remove(old_model)
+        print(f"Removed {old_model}")
 
 
 def load_checkpoint(
@@ -87,6 +93,28 @@ def load_checkpoint(
     loss = checkpoint.get("loss", float("inf"))
     return step, loss
 
+def extract_digits(f):
+    digits = "".join(filter(str.isdigit, f))
+    return int(digits) if digits else -1
+
+
+def latest_checkpoint_path(dir_path, regex="acoustic-training-model-[0-9]*.pt"):
+    f_list = glob.glob(os.path.join(dir_path, regex))
+    print(f_list)
+    f_list.sort(key=lambda f: extract_digits(f))
+    x = f_list[-1]
+    print(f"latest_checkpoint_path:{x}")
+    return x
+
+
+def oldest_checkpoint_path(dir_path, logger, regex="acoustic-training-model-[0-9]*.pt", preserved=2):
+    f_list = glob.glob(os.path.join(dir_path, regex))
+    f_list.sort(key=lambda f: extract_digits(f))
+    if len(f_list) > preserved:
+        x = f_list[0]
+        logger.info(f"oldest_checkpoint_path:{x}")
+        return x
+    return ""
 
 def plot_spectrogram(spectrogram):
     fig, ax = plt.subplots(figsize=(10, 2))
