@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # Define hyperparameters for training:
 ########################################################################################
 
-BATCH_SIZE = 4
+BATCH_SIZE = 32
 LEARNING_RATE = 4e-4
 BETAS = (0.8, 0.99)
 WEIGHT_DECAY = 1e-5
