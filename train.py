@@ -116,7 +116,7 @@ def train(rank, world_size, args):
         shuffle=False,
         num_workers=0,
         pin_memory=True,
-        discrete=True,
+        # discrete=True,
     )
 
     ####################################################################################
