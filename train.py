@@ -1,6 +1,5 @@
 import argparse
 import logging
-import os
 from pathlib import Path
 
 import torch
@@ -15,23 +14,24 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 
 from acoustic import AcousticModel
 from acoustic.dataset import MelDataset
-from acoustic.utils import Metric, save_checkpoint, load_checkpoint, plot_spectrogram
+from acoustic.utils import Metric, save_checkpoint, load_checkpoint, plot_spectrogram, latest_checkpoint_path
 
+from tqdm import tqdm
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.WARNING)
 logger = logging.getLogger(__name__)
 
 ########################################################################################
 # Define hyperparameters for training:
 ########################################################################################
 
-BATCH_SIZE = 32
+BATCH_SIZE = 4
 LEARNING_RATE = 4e-4
 BETAS = (0.8, 0.99)
 WEIGHT_DECAY = 1e-5
 STEPS = 80000
 LOG_INTERVAL = 5
-VALIDATION_INTERVAL = 100
+VALIDATION_INTERVAL = 50
 CHECKPOINT_INTERVAL = 100
 if os.name == 'nt':
     BACKEND = "gloo"
@@ -58,7 +58,7 @@ def train(rank, world_size, args):
     if rank == 0:
         logger.setLevel(logging.INFO)
         handler = logging.FileHandler(log_dir / f"{args.checkpoint_dir.stem}.log")
-        handler.setLevel(logging.INFO)
+        handler.setLevel(logging.WARNING)
         formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(message)s", datefmt="%m/%d/%Y %I:%M:%S"
         )
@@ -91,7 +91,7 @@ def train(rank, world_size, args):
     train_dataset = MelDataset(
         root=args.dataset_dir,
         train=True,
-        # discrete=args.discrete,
+        discrete=args.discrete,
     )
     train_sampler = DistributedSampler(train_dataset, drop_last=True)
     train_loader = DataLoader(
@@ -99,7 +99,7 @@ def train(rank, world_size, args):
         batch_size=BATCH_SIZE,
         sampler=train_sampler,
         collate_fn=train_dataset.pad_collate,
-        num_workers=8,
+        num_workers=2,
         pin_memory=True,
         shuffle=False,
         drop_last=True,
@@ -113,23 +113,29 @@ def train(rank, world_size, args):
         validation_dataset,
         batch_size=1,
         shuffle=False,
-        num_workers=8,
+        num_workers=0,
         pin_memory=True,
-        # discrete=args.discrete,
+        discrete=True,
     )
 
     ####################################################################################
     # Load checkpoint if args.resume is set
     ####################################################################################
 
-    if args.resume is not None:
-        global_step, best_loss = load_checkpoint(
-            load_path=args.resume,
-            acoustic=acoustic,
-            optimizer=optimizer,
-            rank=rank,
-            logger=logger,
-        )
+    if args.resume:
+        print('Trying to resume from saved checkpoint...')
+        try:
+            latest_model = latest_checkpoint_path(args.checkpoint_dir)
+            global_step, best_loss = load_checkpoint(
+                load_path=latest_model,
+                acoustic=acoustic,
+                optimizer=optimizer,
+                rank=rank,
+                logger=logger,
+            )
+        except:
+            print("No saved checkpoints found...")
+            global_step, best_loss = 0, float("inf")
     else:
         global_step, best_loss = 0, float("inf")
 
@@ -158,6 +164,8 @@ def train(rank, world_size, args):
     epoch_loss = Metric()
 
     validation_loss = Metric()
+    
+    pbar = tqdm
 
     for epoch in range(start_epoch, n_epochs + 1):
         train_sampler.set_epoch(epoch)
@@ -199,7 +207,6 @@ def train(rank, world_size, args):
                     average_loss.value,
                     global_step,
                 )
-                
                 average_loss.reset()
 
             # --------------------------------------------------------------------------#
@@ -245,9 +252,6 @@ def train(rank, world_size, args):
                         global_step,
                     )
                     logger.info(
-                        f"Step: {global_step}"
-                    )
-                    logger.info(
                         f"valid -- epoch: {epoch}, loss: {validation_loss.value:.4f}"
                     )
 
@@ -288,21 +292,21 @@ def train(rank, world_size, args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train the acoustic model.")
     parser.add_argument(
-        "dataset_dir",
-        metavar="dataset-dir",
-        help="path to the data directory.",
+        "--dataset_dir",
+        default="dataset",
+        help="path to the preprocessed data directory",
         type=Path,
     )
     parser.add_argument(
-        "checkpoint_dir",
-        metavar="checkpoint-dir",
-        help="path to the checkpoint directory.",
+        "--checkpoint_dir",
+        default="checkpoints",
+        help="path to the checkpoint directory",
         type=Path,
     )
     parser.add_argument(
         "--resume",
-        help="path to the checkpoint to resume from.",
-        type=Path,
+        help="resume from checkpoint",
+        action="store_true",
     )
     parser.add_argument(
         "--discrete",
